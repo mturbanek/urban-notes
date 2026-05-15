@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
+  <!-- City skyline silhouette (buildings increase in height left→right) -->
+  <rect x="3"  y="19" width="5" height="10" rx="1" fill="white" opacity=".85"/>
+  <rect x="9"  y="12" width="5" height="17" rx="1" fill="white"/>
+  <rect x="15" y="15" width="5" height="14" rx="1" fill="white" opacity=".9"/>
+  <rect x="21" y="7"  width="4" height="22" rx="1" fill="white"/>
+</svg>

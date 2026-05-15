@@ -1,0 +1,15 @@
+services:
+  urban-notes:
+    image: urban-notes:latest
+    build: .
+    container_name: urban-notes
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTH_USER=admin          # optional, defaults to "admin"
+      - AUTH_PASS=mikeman75       # required — change this before deploying
+    volumes:
+      # Adjust the host path to wherever you want notes stored on the NAS.
+      # The directory will be created automatically if it does not exist.
+      - /volume1/docker/urban-notes/notes:/app/notes
+    restart: unless-stopped

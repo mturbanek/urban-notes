@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Urban Notes — Sign in</title>
+  <script>
+    (function(){
+      var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+      document.documentElement.dataset.theme=t;
+    })();
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; -webkit-font-smoothing: antialiased; }
+
+    :root {
+      --bg:      #faf9f7;
+      --surface: #ffffff;
+      --border:  rgba(0,0,0,.09);
+      --text:    #0f0e13;
+      --muted:   #6b6779;
+      --grad:    linear-gradient(135deg, #7c3aed, #6366f1);
+      --accent:  #7c3aed;
+      --shadow:  0 4px 24px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
+    }
+    [data-theme="dark"] {
+      --bg:      #0d0c14;
+      --surface: #141219;
+      --border:  rgba(255,255,255,.07);
+      --text:    #f0eefa;
+      --muted:   #9991b8;
+      --grad:    linear-gradient(135deg, #a78bfa, #818cf8);
+      --accent:  #a78bfa;
+      --shadow:  0 4px 24px rgba(0,0,0,.35), 0 1px 4px rgba(0,0,0,.2);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 360px;
+      padding: 40px 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+    .brand-mark {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, rgba(167,139,250,.18), rgba(129,140,248,.12));
+      border: 1px solid rgba(167,139,250,.28);
+      border-radius: 8px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .brand-name {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.025em;
+      margin-bottom: 4px;
+    }
+    .sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    .error {
+      font-size: 12.5px;
+      color: #ef4444;
+      background: rgba(239,68,68,.08);
+      border: 1px solid rgba(239,68,68,.18);
+      border-radius: 6px;
+      padding: 7px 10px;
+      margin-bottom: 16px;
+    }
+
+    .field { margin-bottom: 14px; }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 5px;
+      letter-spacing: .01em;
+      text-transform: uppercase;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 120ms;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+    [data-theme="dark"] input:focus { box-shadow: 0 0 0 3px rgba(167,139,250,.14); }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      background: var(--grad);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 120ms, transform 120ms;
+    }
+    .btn:hover  { opacity: .88; transform: translateY(-1px); }
+    .btn:active { opacity: 1;   transform: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="16" height="14" viewBox="0 0 18 16" fill="currentColor">
+          <rect x="0"  y="9"  width="4" height="7" rx="1"/>
+          <rect x="5"  y="4"  width="4" height="12" rx="1"/>
+          <rect x="10" y="6"  width="4" height="10" rx="1"/>
+          <rect x="15" y="2"  width="3" height="14" rx="1"/>
+        </svg>
+      </div>
+      <span class="brand-name">Urban Notes</span>
+    </div>
+
+    <h1>Sign in</h1>
+    <p class="sub">Enter your credentials to continue.</p>
+
+    <div id="errMsg" class="error" style="display:none">Incorrect username or password.</div>
+
+    <form method="POST" action="/login">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn">Sign in</button>
+    </form>
+    <p style="margin-top:20px;font-size:11px;text-align:center;color:var(--muted);opacity:.55" id="ver"></p>
+  </div>
+  <script>
+    if (new URLSearchParams(location.search).get('error')) {
+      document.getElementById('errMsg').style.display = '';
+    }
+    fetch('/api/version').then(r => r.json()).then(d => {
+      document.getElementById('ver').textContent = d.version;
+    }).catch(() => {});
+  </script>
+</body>
+</html>

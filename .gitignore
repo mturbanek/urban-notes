@@ -1,0 +1,14 @@
+# compiled binary
+markdown-notes
+
+# user data — mount as a volume, never commit
+notes/
+
+# build artifacts
+*.tar.gz
+*.zip
+
+# editor / OS
+.DS_Store
+*.swp
+*~
