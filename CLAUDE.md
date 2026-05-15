@@ -5,12 +5,24 @@ A Go-based markdown note-taking web app. Single binary, no database — each not
 
 ## Build & run
 ```bash
-/home/murbanek/go/bin/go build -o markdown-notes .
+/home/murbanek/go/bin/go build -ldflags="-X main.version=v1.0.0" -o markdown-notes .
 pkill -f markdown-notes 2>/dev/null; sleep 0.3
-./markdown-notes &
+AUTH_USER=admin AUTH_PASS=mikeman75 ./markdown-notes &
 ```
 `go` is at `/home/murbanek/go/bin/go` (not on PATH by default).
 Exit code 144 from `pkill` is normal when the process wasn't running.
+
+## Git
+Repo is initialised at `/home/murbanek/markdown`. Branch: `main`.
+**Commit after every meaningful change.** Use short conventional commits:
+`fix: ...`, `feat: ...`, `style: ...`, `refactor: ...`, `chore: ...`
+Update the version string in `main.go` and the build command above when bumping.
+
+## Docker
+```bash
+sudo docker build --build-arg VERSION=v1.0.0 -t urban-notes:v1.0.0 -t urban-notes:latest .
+sudo docker save urban-notes:latest | gzip > urban-notes.tar.gz
+```
 
 ## File layout
 ```
