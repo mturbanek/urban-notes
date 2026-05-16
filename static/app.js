@@ -734,6 +734,14 @@ function initEditor() {
       },
     ],
     placeholder: 'Start writing in Markdown…\n\nLink to notes with [[Note Title]]\nAdd tags in the tag bar above.',
+    imageUploadFunction(file, onSuccess, onError) {
+      const fd = new FormData();
+      fd.append('image', file);
+      fetch('/api/upload', { method: 'POST', body: fd })
+        .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+        .then(d => onSuccess(d.url))
+        .catch(err => onError('Upload failed: ' + err));
+    },
     renderingConfig: { codeSyntaxHighlighting: true },
     status: ['lines', 'words', 'cursor'],
     previewClass: ['editor-preview'],

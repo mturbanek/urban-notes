@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -21,8 +22,9 @@ import (
 )
 
 const (
-	notesDir = "notes"
-	port     = "8080"
+	notesDir   = "notes"
+	uploadsDir = "notes/uploads"
+	port       = "8080"
 )
 
 // version is set at build time via -ldflags "-X main.version=vX.Y.Z"
@@ -307,6 +309,63 @@ func handleNote(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, "file too large", http.StatusBadRequest)
+		return
+	}
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "missing image field", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Read first 512 bytes to detect MIME type
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	mimeType := http.DetectContentType(buf[:n])
+	if !strings.HasPrefix(mimeType, "image/") {
+		http.Error(w, "only image files are allowed", http.StatusBadRequest)
+		return
+	}
+
+	// Build a collision-safe filename: timestamp + original name
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true, ".svg": true}
+	if !allowedExts[ext] {
+		http.Error(w, "unsupported image type", http.StatusBadRequest)
+		return
+	}
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	dest := filepath.Join(uploadsDir, filename)
+
+	out, err := os.Create(dest)
+	if err != nil {
+		http.Error(w, "could not save file", http.StatusInternalServerError)
+		return
+	}
+	defer out.Close()
+
+	// Write the sniffed bytes first, then the rest
+	if _, err = out.Write(buf[:n]); err != nil {
+		http.Error(w, "write error", http.StatusInternalServerError)
+		return
+	}
+	if _, err = io.Copy(out, file); err != nil {
+		http.Error(w, "write error", http.StatusInternalServerError)
+		return
+	}
+
+	jsonHeader(w)
+	json.NewEncoder(w).Encode(map[string]string{"url": "/uploads/" + filename})
+}
+
 func handleRender(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -339,6 +398,9 @@ func main() {
 	if err := os.MkdirAll(notesDir, 0755); err != nil {
 		log.Fatal(err)
 	}
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+		log.Fatal(err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", handleLogin)
@@ -347,6 +409,8 @@ func main() {
 	mux.HandleFunc("/api/notes", handleNotes)
 	mux.HandleFunc("/api/notes/", handleNote)
 	mux.HandleFunc("/api/render", handleRender)
+	mux.HandleFunc("/api/upload", handleUpload)
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 
 	fmt.Printf("Urban Notes %s running at http://localhost:%s\n", version, port)
