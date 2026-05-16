@@ -7,7 +7,7 @@ A Go-based markdown note-taking web app. Single binary, no database — each not
 ```bash
 /home/murbanek/go/bin/go build -ldflags="-X main.version=v1.1.0" -o markdown-notes .
 pkill -f markdown-notes 2>/dev/null; sleep 0.3
-AUTH_USER=admin AUTH_PASS=mikeman75 ./markdown-notes &
+AUTH_USER=admin AUTH_PASS=***** ./markdown-notes &
 ```
 `go` is at `/home/murbanek/go/bin/go` (not on PATH by default).
 Exit code 144 from `pkill` is normal when the process wasn't running.
