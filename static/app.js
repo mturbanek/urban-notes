@@ -704,6 +704,36 @@ function openTips()  { $('tipsModal').classList.remove('hidden'); }
 function closeTips() { $('tipsModal').classList.add('hidden'); }
 
 // ── EasyMDE ───────────────────────────────────────────────────────────────────
+// ── Image upload ──────────────────────────────────────────────────────────────
+
+function uploadImage(file) {
+  const fd = new FormData();
+  fd.append('image', file);
+  return fetch('/api/upload', { method: 'POST', body: fd }).then(r => {
+    if (r.ok) return r.json();
+    return r.text().then(t => Promise.reject(t.trim() || r.statusText));
+  });
+}
+
+// Opens a file picker, uploads the chosen image, and calls back with
+// { name, url } on success. The input must be in the DOM for Firefox.
+function pickAndUploadImage(onDone) {
+  const input = Object.assign(document.createElement('input'), {
+    type: 'file', accept: 'image/*',
+    style: 'position:fixed;top:-999px;left:-999px',
+  });
+  document.body.appendChild(input);
+  input.onchange = () => {
+    const file = input.files[0];
+    document.body.removeChild(input);
+    if (!file) return;
+    uploadImage(file)
+      .then(d => onDone({ name: file.name, url: d.url }))
+      .catch(err => alert('Upload failed: ' + err));
+  };
+  input.click();
+}
+
 function initEditor() {
   easyMDE = new EasyMDE({
     element: $('mdEditor'),
@@ -735,12 +765,7 @@ function initEditor() {
     ],
     placeholder: 'Start writing in Markdown…\n\nLink to notes with [[Note Title]]\nAdd tags in the tag bar above.',
     imageUploadFunction(file, onSuccess, onError) {
-      const fd = new FormData();
-      fd.append('image', file);
-      fetch('/api/upload', { method: 'POST', body: fd })
-        .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
-        .then(d => onSuccess(d.url))
-        .catch(err => onError('Upload failed: ' + err));
+      uploadImage(file).then(d => onSuccess(d.url)).catch(err => onError(String(err)));
     },
     renderingConfig: { codeSyntaxHighlighting: true },
     status: ['lines', 'words', 'cursor'],
@@ -1169,25 +1194,12 @@ function _execSlash(cmd) {
 
   if (cmd.action === 'imagePicker') {
     cm.replaceRange('', from, cur);
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = () => {
-      const file = input.files[0];
-      if (!file) { cm.focus(); return; }
-      const fd = new FormData();
-      fd.append('image', file);
-      fetch('/api/upload', { method: 'POST', body: fd })
-        .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
-        .then(d => {
-          const md = `![${file.name}](${d.url})`;
-          cm.replaceRange(md, from);
-          cm.setCursor({ line: from.line, ch: from.ch + md.length });
-          cm.focus();
-        })
-        .catch(err => { alert('Upload failed: ' + err); cm.focus(); });
-    };
-    input.click();
+    pickAndUploadImage(file => {
+      const md = `![${file.name}](${file.url})`;
+      cm.replaceRange(md, from);
+      cm.setCursor({ line: from.line, ch: from.ch + md.length });
+      cm.focus();
+    });
     return;
   }
 
