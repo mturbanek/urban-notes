@@ -1711,3 +1711,67 @@ pre.mermaid-error { border-left: 3px solid var(--danger) !important; opacity: .7
   padding-left:  max(48px, calc((100vw - 780px) / 2)) !important;
   padding-right: max(48px, calc((100vw - 780px) / 2)) !important;
 }
+
+/* ── Emoji Picker ──────────────────────────────────────────────────────────── */
+.emoji-picker {
+  position: fixed;
+  z-index: 1200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08);
+  width: 292px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.emoji-search-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.emoji-search-row input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.emoji-grid-wrap {
+  overflow-y: auto;
+  max-height: 260px;
+  padding: 2px 6px 8px;
+}
+.emoji-cat-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 6px 4px 2px;
+}
+.emoji-row { display: flex; flex-wrap: wrap; }
+.em {
+  width: 34px; height: 34px;
+  font-size: 20px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 80ms;
+}
+.em:hover, .em.em-active { background: var(--hover); }
+.emoji-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
