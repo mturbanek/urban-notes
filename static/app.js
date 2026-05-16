@@ -1059,6 +1059,7 @@ const SLASH_COMMANDS = [
   { id:'table',   icon:'⊞',   label:'Table',          desc:'Two-column table',           text:'| Col 1 | Col 2 |\n|---|---|\n| Cell | Cell |', ml:true, mlCursor:0 },
   { id:'divider', icon:'—',   label:'Divider',        desc:'Horizontal rule',            text:'---',             replaceLine:true },
   { id:'link',    icon:'[[',   label:'Note link',      desc:'Link to another note',       action:'noteLinkPicker' },
+  { id:'image',   icon:'🖼',   label:'Image',          desc:'Upload an image file',        action:'imagePicker' },
 ];
 
 let _slashActive = false;
@@ -1164,6 +1165,30 @@ function _execSlash(cmd) {
   if (cmd.action === 'noteLinkPicker') {
     cm.replaceRange('', from, cur);
     openNoteLinkPicker(); return;
+  }
+
+  if (cmd.action === 'imagePicker') {
+    cm.replaceRange('', from, cur);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files[0];
+      if (!file) { cm.focus(); return; }
+      const fd = new FormData();
+      fd.append('image', file);
+      fetch('/api/upload', { method: 'POST', body: fd })
+        .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+        .then(d => {
+          const md = `![${file.name}](${d.url})`;
+          cm.replaceRange(md, from);
+          cm.setCursor({ line: from.line, ch: from.ch + md.length });
+          cm.focus();
+        })
+        .catch(err => { alert('Upload failed: ' + err); cm.focus(); });
+    };
+    input.click();
+    return;
   }
 
   if (cmd.replaceLine) {
