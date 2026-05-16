@@ -10,7 +10,7 @@ services:
       - "8080:8080"
     environment:
       - AUTH_USER=admin          # optional, defaults to "admin"
-      - AUTH_PASS=changeme        # required — change this before deploying
+      - AUTH_PASS=                 # required — set this before deploying
       - GOMEMLIMIT=128MiB        # prompt Go runtime to return freed memory to OS
     volumes:
       # Adjust the host path to wherever you want notes stored on the NAS.
