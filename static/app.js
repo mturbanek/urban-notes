@@ -832,18 +832,36 @@ function renderWelcomeScreen() {
   const recent = sorted.slice(0, 3);
   const tagCount = allTags().length;
   const lastMod  = notes.reduce((a, b) => new Date(b.modified) > new Date(a.modified) ? b : a);
-  statsEl.textContent = `${notes.length} note${notes.length !== 1 ? 's' : ''} · ${tagCount} tag${tagCount !== 1 ? 's' : ''} · last edited ${timeAgo(lastMod.modified)}`;
+  statsEl.innerHTML = `
+    <span class="stat-pill">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      ${notes.length} note${notes.length !== 1 ? 's' : ''}
+    </span>
+    <span class="stat-pill">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      ${tagCount} tag${tagCount !== 1 ? 's' : ''}
+    </span>
+    <span class="stat-pill">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      ${timeAgo(lastMod.modified)}
+    </span>`;
   statsEl.classList.remove('hidden');
 
   recentEl.innerHTML = `
     <div class="recent-label">Recent</div>
     <div class="recent-grid">
-      ${recent.map(n => `
+      ${recent.map(n => {
+        const tagHtml = n.tags?.length
+          ? `<div class="recent-card-tags">${n.tags.slice(0, 2).map(t => `<span class="recent-card-tag">${escapeHtml(t)}</span>`).join('')}</div>`
+          : '';
+        return `
         <div class="recent-card" data-id="${n.id}">
-          <div class="recent-card-title">${escapeHtml(n.title)}</div>
+          <div class="recent-card-title">${escapeHtml(n.title || 'Untitled')}</div>
+          ${tagHtml}
           <div class="recent-card-snippet">${escapeHtml(makeSnippet(n.content, 90))}</div>
           <div class="recent-card-date">${timeAgo(n.modified)}</div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
       <div class="recent-card recent-card-new" id="welcomeRecentNew">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>New note</span>
