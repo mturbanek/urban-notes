@@ -28,7 +28,7 @@ const (
 )
 
 // version is set at build time via -ldflags "-X main.version=vX.Y.Z"
-var version = "v1.0.0"
+var version = "v1.1.0"
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
