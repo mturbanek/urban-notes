@@ -53,6 +53,16 @@ let activeTagFilter = null;
 let sidebarOpen = false;
 let sortOrder  = localStorage.getItem('sortOrder') || 'modified';
 let _tplPickerOpen = false;
+let focusMode  = false;
+
+const CALLOUT_TYPES = {
+  NOTE:      { icon: 'ℹ',  label: 'Note' },
+  TIP:       { icon: '◆',  label: 'Tip' },
+  WARNING:   { icon: '▲',  label: 'Warning' },
+  CAUTION:   { icon: '⚑',  label: 'Caution' },
+  DANGER:    { icon: '✕',  label: 'Danger' },
+  IMPORTANT: { icon: '★',  label: 'Important' },
+};
 
 const BUILT_IN_TEMPLATES = [
   {
@@ -534,6 +544,7 @@ async function showViewMode() {
       noteView.innerHTML = `<div class="note-view-inner">${html}</div>`;
       const inner = noteView.querySelector('.note-view-inner');
       inner.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+      processCallouts(inner);
       inner.querySelectorAll('.wiki-link[data-note-id]').forEach(el => {
         el.addEventListener('click', e => { e.preventDefault(); selectNote(el.dataset.noteId); });
       });
@@ -675,14 +686,67 @@ async function createNote() {
 }
 
 // ── Welcome screen ────────────────────────────────────────────────────────────
+function renderWelcomeScreen() {
+  const statsEl   = $('welcomeStats');
+  const recentEl  = $('welcomeRecent');
+  const bentoEl   = $('welcomeBento');
+
+  if (notes.length === 0) {
+    statsEl.classList.add('hidden');
+    recentEl.classList.add('hidden');
+    bentoEl.classList.remove('hidden');
+    return;
+  }
+
+  const sorted = _sortNotes(notes);
+  const recent = sorted.slice(0, 3);
+  const tagCount = allTags().length;
+  const lastMod  = sorted[0];
+  statsEl.textContent = `${notes.length} note${notes.length !== 1 ? 's' : ''} · ${tagCount} tag${tagCount !== 1 ? 's' : ''} · last edited ${timeAgo(lastMod.modified)}`;
+  statsEl.classList.remove('hidden');
+
+  recentEl.innerHTML = `
+    <div class="recent-label">Recent</div>
+    <div class="recent-grid">
+      ${recent.map(n => `
+        <div class="recent-card" data-id="${n.id}">
+          <div class="recent-card-title">${escapeHtml(n.title)}</div>
+          <div class="recent-card-snippet">${escapeHtml(makeSnippet(n.content, 90))}</div>
+          <div class="recent-card-date">${timeAgo(n.modified)}</div>
+        </div>`).join('')}
+      <div class="recent-card recent-card-new" id="welcomeRecentNew">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>New note</span>
+      </div>
+    </div>`;
+
+  recentEl.querySelectorAll('.recent-card[data-id]').forEach(el =>
+    el.addEventListener('click', () => selectNote(el.dataset.id)));
+  const newBtn = $('welcomeRecentNew');
+  if (newBtn) newBtn.addEventListener('click', createNote);
+
+  recentEl.classList.remove('hidden');
+  bentoEl.classList.add('hidden');
+}
+
+function toggleFocusMode() {
+  focusMode = !focusMode;
+  document.querySelector('.app').classList.toggle('focus-mode', focusMode);
+  $('focusBtn').classList.toggle('is-active', focusMode);
+  $('focusExpand').classList.toggle('hidden', focusMode);
+  $('focusContract').classList.toggle('hidden', !focusMode);
+}
+
 function showWelcomeScreen() {
   clearTimeout(saveTimer);
+  if (focusMode) toggleFocusMode();
   currentId = null;
   currentTags = [];
   isEditing = false;
   welcomeScreen.classList.remove('hidden');
   editorScreen.classList.add('hidden');
   renderList(searchInput.value);
+  renderWelcomeScreen();
   startParticles();
   if (isMobile()) openSidebar();
 }
@@ -1261,6 +1325,25 @@ async function init() {
     });
   });
 
+  // Focus mode
+  $('focusBtn').addEventListener('click', toggleFocusMode);
+
+  // Welcome screen quick-capture
+  $('welcomeCapture').addEventListener('keydown', async e => {
+    if (e.key !== 'Enter') return;
+    const title = e.target.value.trim();
+    if (!title) return;
+    e.target.value = '';
+    try {
+      const note = await api.createNote({ title, content: '', tags: [] });
+      notes.unshift(note);
+      renderList(searchInput.value);
+      renderCalendar();
+      await selectNote(note.id);
+      showEditMode();
+    } catch(err) { alert('Failed to create note: ' + err.message); }
+  });
+
   // Template picker
   $('fromTemplateBtn').addEventListener('click', openTemplatePicker);
   $('templatePickerClose').addEventListener('click', closeTemplatePicker);
@@ -1301,6 +1384,10 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
       e.preventDefault(); openSearch(); return;
     }
+    if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !isEditing && !_gOpen && !_searchOpen &&
+        document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      if (currentId) { toggleFocusMode(); return; }
+    }
     if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !isEditing && !_gOpen && !_searchOpen &&
         document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       openGraph(); return;
@@ -1330,6 +1417,7 @@ async function init() {
     renderList();
     updateTagFilters();
     renderCalendar();
+    renderWelcomeScreen();
     if (notes.length > 0) {
       if (isMobile()) {
         // On mobile, show the notes list first (sidebar open), don't auto-open a note
@@ -1409,6 +1497,31 @@ function buildBacklinks(noteId, noteTitle) {
   section.querySelectorAll('.backlink-item').forEach(el =>
     el.addEventListener('click', () => selectNote(el.dataset.id)));
   return section;
+}
+
+// ── Callout processing ────────────────────────────────────────────────────────
+
+function processCallouts(container) {
+  container.querySelectorAll('blockquote').forEach(bq => {
+    const p = bq.querySelector('p');
+    if (!p) return;
+    const first = p.firstChild;
+    if (!first || first.nodeType !== Node.TEXT_NODE) return;
+    const m = first.textContent.match(/^\[!(NOTE|TIP|WARNING|CAUTION|DANGER|IMPORTANT)\][ \t]*/i);
+    if (!m) return;
+    const type = m[1].toUpperCase();
+    const cfg  = CALLOUT_TYPES[type];
+
+    first.textContent = first.textContent.slice(m[0].length).replace(/^\n/, '');
+    if (!first.textContent && p.childNodes.length === 1) p.remove();
+    else if (!first.textContent) first.remove();
+
+    bq.classList.add('callout', `callout-${type.toLowerCase()}`);
+    const titleEl = document.createElement('div');
+    titleEl.className = 'callout-title';
+    titleEl.innerHTML = `<span class="callout-icon">${escapeHtml(cfg.icon)}</span><span>${escapeHtml(cfg.label)}</span>`;
+    bq.prepend(titleEl);
+  });
 }
 
 // ── Slash Commands ────────────────────────────────────────────────────────────
