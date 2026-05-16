@@ -703,6 +703,111 @@ function insertWikiLink(title) {
 function openTips()  { $('tipsModal').classList.remove('hidden'); }
 function closeTips() { $('tipsModal').classList.add('hidden'); }
 
+// ── Cmd+K search ─────────────────────────────────────────────────────────────
+
+let _searchOpen = false;
+let _searchIdx  = 0;
+let _searchHits = [];
+
+function openSearch() {
+  if (_searchOpen) return;
+  _searchOpen = true;
+  $('searchModal').classList.remove('hidden');
+  $('searchModalInput').value = '';
+  _renderSearchResults('');
+  $('searchModalInput').focus();
+}
+
+function closeSearch() {
+  if (!_searchOpen) return;
+  _searchOpen = false;
+  $('searchModal').classList.add('hidden');
+}
+
+function _highlight(text, q) {
+  if (!q) return escapeHtml(text);
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx < 0) return escapeHtml(text);
+  return escapeHtml(text.slice(0, idx))
+    + '<mark>' + escapeHtml(text.slice(idx, idx + q.length)) + '</mark>'
+    + escapeHtml(text.slice(idx + q.length));
+}
+
+function _snippetAround(content, q) {
+  if (!q) return escapeHtml(content.slice(0, 100));
+  const idx = content.toLowerCase().indexOf(q.toLowerCase());
+  if (idx < 0) return escapeHtml(content.slice(0, 100));
+  const start = Math.max(0, idx - 40);
+  const raw = (start > 0 ? '…' : '') + content.slice(start, idx + q.length + 60);
+  return _highlight(raw, q);
+}
+
+function _renderSearchResults(q) {
+  const trimmed = q.trim();
+  let hits = notes;
+  if (trimmed) {
+    const lq = trimmed.toLowerCase();
+    hits = notes.filter(n =>
+      n.title.toLowerCase().includes(lq) ||
+      n.content.toLowerCase().includes(lq) ||
+      (n.tags || []).some(t => t.toLowerCase().includes(lq))
+    );
+    hits.sort((a, b) => {
+      const aTitle = a.title.toLowerCase().includes(lq) ? 0 : 1;
+      const bTitle = b.title.toLowerCase().includes(lq) ? 0 : 1;
+      return aTitle - bTitle;
+    });
+  }
+  _searchHits = hits.slice(0, 24);
+  _searchIdx = 0;
+
+  const el = $('searchModalResults');
+  if (!_searchHits.length) {
+    el.innerHTML = `<div class="search-empty">${trimmed ? 'No notes match "' + escapeHtml(trimmed) + '"' : 'No notes yet.'}</div>`;
+    return;
+  }
+
+  el.innerHTML = _searchHits.map((n, i) => {
+    const tags = (n.tags || []).slice(0, 3).map(t => {
+      const c = tagColor(t);
+      return `<span style="font-size:11px;padding:1px 6px;border-radius:4px;background:${c.bg};color:${c.text}">${escapeHtml(t)}</span>`;
+    }).join('');
+    return `<div class="search-result${i === 0 ? ' sr-active' : ''}" data-id="${n.id}">
+      <div class="search-result-title">${_highlight(n.title, trimmed)}</div>
+      <div class="search-result-meta">
+        ${tags}
+        <span class="search-result-snippet">${_snippetAround(n.content.replace(/[#*`>\-_\[\]]/g, ''), trimmed)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.search-result').forEach(el =>
+    el.addEventListener('click', () => { closeSearch(); selectNote(el.dataset.id); })
+  );
+}
+
+function _searchMove(dir) {
+  _searchIdx = (_searchIdx + dir + _searchHits.length) % _searchHits.length;
+  $('searchModalResults').querySelectorAll('.search-result').forEach((el, i) =>
+    el.classList.toggle('sr-active', i === _searchIdx)
+  );
+  $('searchModalResults').querySelector('.sr-active')?.scrollIntoView({ block: 'nearest' });
+}
+
+function initSearch() {
+  $('searchModal').addEventListener('click', e => { if (e.target === $('searchModal')) closeSearch(); });
+  $('searchModalInput').addEventListener('input', e => _renderSearchResults(e.target.value));
+  $('searchModalInput').addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown')  { e.preventDefault(); _searchMove(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _searchMove(-1); }
+    else if (e.key === 'Enter') {
+      const hit = _searchHits[_searchIdx];
+      if (hit) { closeSearch(); selectNote(hit.id); }
+    }
+    else if (e.key === 'Escape') closeSearch();
+  });
+}
+
 // ── EasyMDE ───────────────────────────────────────────────────────────────────
 // ── Image upload ──────────────────────────────────────────────────────────────
 
@@ -866,6 +971,7 @@ async function init() {
   initTheme();
   initEditor();
   initSlashCommands();
+  initSearch();
   initWhimsy();
 
   // Brand click → welcome screen (ignore clicks on the theme toggle button inside it)
@@ -952,12 +1058,16 @@ async function init() {
   // Global shortcuts
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+      if (_searchOpen) { closeSearch(); return; }
       if (_gOpen) { closeGraph(); return; }
       if (!$('tipsModal').classList.contains('hidden')) { closeTips(); return; }
       if (noteLinkPickerOpen) { closeNoteLinkPicker(); return; }
       if (isEditing) { clearTimeout(saveTimer); doSave().then(showViewMode); }
     }
-    if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !isEditing && !_gOpen &&
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault(); openSearch(); return;
+    }
+    if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !isEditing && !_gOpen && !_searchOpen &&
         document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
       openGraph(); return;
     }
@@ -1235,7 +1345,7 @@ function _nodeR(n) { return Math.min(46, 22 + n.degree * 3); }
 function _buildGraph() {
   const wikiRe = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
   _gNodes = notes.map(n => ({
-    id:n.id, title:n.title,
+    id:n.id, title:n.title, tag:(n.tags||[])[0]||null,
     x:(Math.random()-.5)*500, y:(Math.random()-.5)*500,
     vx:0, vy:0, degree:0,
   }));
@@ -1254,6 +1364,15 @@ function _buildGraph() {
       }
     }
   }
+  // Build legend for tags that appear in the graph
+  const seenTags = [...new Set(_gNodes.map(n => n.tag).filter(Boolean))].slice(0, 8);
+  $('graphLegend').innerHTML = seenTags.map(t => {
+    const c = tagColor(t);
+    return `<div class="graph-legend-item">
+      <div class="graph-legend-dot" style="background:${c.text}"></div>
+      <span>${escapeHtml(t)}</span>
+    </div>`;
+  }).join('');
 }
 
 function _simStep() {
@@ -1308,13 +1427,21 @@ function _drawGraph() {
     const r=_nodeR(nd), cur=nd.id===currentId, hov=nd===_gHovered;
     ctx.shadowColor=dark?'rgba(167,139,250,.35)':'rgba(124,58,237,.25)';
     ctx.shadowBlur=(cur||hov?18:5)/sc;
+    const tc = nd.tag ? tagColor(nd.tag) : null;
+    const tagHex = tc ? tc.text : null;
     const g=ctx.createRadialGradient(nd.x-r*.3,nd.y-r*.3,0,nd.x,nd.y,r);
-    if (cur)      { g.addColorStop(0,dark?'#c4b5fd':'#a78bfa'); g.addColorStop(1,dark?'#7c3aed':'#6366f1'); }
-    else if (hov) { g.addColorStop(0,dark?'#a78bfa':'#8b5cf6'); g.addColorStop(1,dark?'#6366f1':'#7c3aed'); }
-    else          { g.addColorStop(0,dark?'#27244077':'#eae6e0'); g.addColorStop(1,dark?'#1e1b2e':'#dbd7d0'); }
+    if (cur) {
+      g.addColorStop(0,dark?'#c4b5fd':'#a78bfa'); g.addColorStop(1,dark?'#7c3aed':'#6366f1');
+    } else if (hov) {
+      g.addColorStop(0,dark?'#a78bfa':'#8b5cf6'); g.addColorStop(1,dark?'#6366f1':'#7c3aed');
+    } else if (tagHex) {
+      g.addColorStop(0, tagHex + (dark?'99':'55')); g.addColorStop(1, tagHex + (dark?'44':'22'));
+    } else {
+      g.addColorStop(0,dark?'#27244077':'#eae6e0'); g.addColorStop(1,dark?'#1e1b2e':'#dbd7d0');
+    }
     ctx.fillStyle=g;
     ctx.beginPath(); ctx.arc(nd.x,nd.y,r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
-    ctx.strokeStyle=cur?(dark?'#a78bfa':'#7c3aed'):hov?(dark?'#818cf8':'#6366f1'):(dark?'rgba(255,255,255,.13)':'rgba(0,0,0,.12)');
+    ctx.strokeStyle=cur?(dark?'#a78bfa':'#7c3aed'):hov?(dark?'#818cf8':'#6366f1'):tagHex?(tagHex+(dark?'88':'55')):(dark?'rgba(255,255,255,.13)':'rgba(0,0,0,.12)');
     ctx.lineWidth=(cur||hov?2:1)/sc;
     ctx.beginPath(); ctx.arc(nd.x,nd.y,r,0,Math.PI*2); ctx.stroke();
 
