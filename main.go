@@ -35,7 +35,7 @@ var version = "v1.1.0"
 var (
 	authUser   string
 	authPass   string
-	sessions   = map[string]struct{}{}
+	sessions   = map[string]time.Time{} // token → expiry
 	sessionsMu sync.Mutex
 )
 
@@ -53,7 +53,11 @@ func isAuthenticated(r *http.Request) bool {
 		return false
 	}
 	sessionsMu.Lock()
-	_, ok := sessions[cookie.Value]
+	exp, ok := sessions[cookie.Value]
+	if ok && time.Now().After(exp) {
+		delete(sessions, cookie.Value)
+		ok = false
+	}
 	sessionsMu.Unlock()
 	return ok
 }
@@ -92,7 +96,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		if userOK && passOK {
 			token := newSessionToken()
 			sessionsMu.Lock()
-			sessions[token] = struct{}{}
+			sessions[token] = time.Now().Add(7 * 24 * time.Hour)
 			sessionsMu.Unlock()
 			http.SetCookie(w, &http.Cookie{
 				Name:     "session",
@@ -394,6 +398,18 @@ func main() {
 	if authPass == "" {
 		log.Println("WARNING: AUTH_PASS not set — running without authentication")
 	}
+
+	go func() {
+		for range time.Tick(1 * time.Hour) {
+			sessionsMu.Lock()
+			for tok, exp := range sessions {
+				if time.Now().After(exp) {
+					delete(sessions, tok)
+				}
+			}
+			sessionsMu.Unlock()
+		}
+	}()
 
 	if err := os.MkdirAll(notesDir, 0755); err != nil {
 		log.Fatal(err)
