@@ -1,7 +1,10 @@
 services:
   urban-notes:
     image: urban-notes:latest
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: v1.1.0
     container_name: urban-notes
     ports:
       - "8080:8080"
