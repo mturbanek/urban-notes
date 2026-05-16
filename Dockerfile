@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY main.go .
-ARG VERSION=v1.3.0
+ARG VERSION=v1.4.0
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.version=${VERSION}" -o markdown-notes .
 
 # ── Stage 2: Run ──────────────────────────────────────────────────────────────

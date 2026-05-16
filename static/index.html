@@ -94,6 +94,12 @@
       <div id="notesList" class="notes-list"></div>
 
       <div class="sidebar-footer">
+        <button id="trashBtn" class="trash-sidebar-btn" title="Trash">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>
+          Trash
+        </button>
         <a href="/logout" class="logout-btn">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -284,6 +290,30 @@
         <kbd class="search-esc-hint">Esc</kbd>
       </div>
       <div id="searchModalResults" class="search-modal-results"></div>
+    </div>
+  </div>
+
+  <!-- Undo toast -->
+  <div id="undoToast" class="undo-toast hidden">
+    <span id="undoToastMsg"></span>
+    <button id="undoBtn">Undo</button>
+  </div>
+
+  <!-- Trash modal -->
+  <div id="trashModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>Trash
+        </h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="emptyTrashBtn" class="btn-danger-sm">Empty trash</button>
+          <button id="closeTrashModal" class="modal-close">&times;</button>
+        </div>
+      </div>
+      <div id="trashList" class="trash-list modal-body"></div>
     </div>
   </div>
 

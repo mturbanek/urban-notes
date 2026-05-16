@@ -28,7 +28,7 @@ const (
 )
 
 // version is set at build time via -ldflags "-X main.version=vX.Y.Z"
-var version = "v1.3.0"
+var version = "v1.4.0"
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -127,15 +127,39 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
 type Note struct {
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	Content    string     `json:"content"`
+	Tags       []string   `json:"tags"`
+	Created    time.Time  `json:"created"`
+	Modified   time.Time  `json:"modified"`
+	Pinned     bool       `json:"pinned,omitempty"`
+	Locked     bool       `json:"locked,omitempty"`
+	IsTemplate bool       `json:"isTemplate,omitempty"`
+	Deleted    bool       `json:"deleted,omitempty"`
+	DeletedAt  *time.Time `json:"deletedAt,omitempty"`
+}
+
+// NoteIndex is a lightweight view returned by GET /api/notes — no Content field.
+type NoteIndex struct {
 	ID         string    `json:"id"`
 	Title      string    `json:"title"`
-	Content    string    `json:"content"`
+	Snippet    string    `json:"snippet"`
 	Tags       []string  `json:"tags"`
 	Created    time.Time `json:"created"`
 	Modified   time.Time `json:"modified"`
 	Pinned     bool      `json:"pinned,omitempty"`
 	Locked     bool      `json:"locked,omitempty"`
 	IsTemplate bool      `json:"isTemplate,omitempty"`
+}
+
+func makeSnippet(content string, max int) string {
+	content = strings.TrimSpace(content)
+	runes := []rune(content)
+	if len(runes) <= max {
+		return content
+	}
+	return string(runes[:max]) + "…"
 }
 
 func renderMarkdown(md string) string {
@@ -148,12 +172,12 @@ func renderMarkdown(md string) string {
 	return string(markdown.Render(doc, renderer))
 }
 
-func listNotes() ([]Note, error) {
+func listNotes() ([]NoteIndex, error) {
 	entries, err := os.ReadDir(notesDir)
 	if err != nil {
 		return nil, err
 	}
-	var notes []Note
+	var result []NoteIndex
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -166,12 +190,85 @@ func listNotes() ([]Note, error) {
 		if json.Unmarshal(data, &note) != nil {
 			continue
 		}
-		notes = append(notes, note)
+		if note.Deleted {
+			continue
+		}
+		result = append(result, NoteIndex{
+			ID:         note.ID,
+			Title:      note.Title,
+			Snippet:    makeSnippet(note.Content, 90),
+			Tags:       note.Tags,
+			Created:    note.Created,
+			Modified:   note.Modified,
+			Pinned:     note.Pinned,
+			Locked:     note.Locked,
+			IsTemplate: note.IsTemplate,
+		})
 	}
-	sort.Slice(notes, func(i, j int) bool {
-		return notes[i].Modified.After(notes[j].Modified)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Modified.After(result[j].Modified)
 	})
-	return notes, nil
+	return result, nil
+}
+
+func listTrash() ([]NoteIndex, error) {
+	entries, err := os.ReadDir(notesDir)
+	if err != nil {
+		return nil, err
+	}
+	var result []NoteIndex
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(notesDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var note Note
+		if json.Unmarshal(data, &note) != nil {
+			continue
+		}
+		if !note.Deleted {
+			continue
+		}
+		result = append(result, NoteIndex{
+			ID:       note.ID,
+			Title:    note.Title,
+			Snippet:  makeSnippet(note.Content, 90),
+			Tags:     note.Tags,
+			Created:  note.Created,
+			Modified: note.Modified,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Modified.After(result[j].Modified)
+	})
+	return result, nil
+}
+
+func purgeTrashed() {
+	entries, err := os.ReadDir(notesDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(notesDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var note Note
+		if json.Unmarshal(data, &note) != nil {
+			continue
+		}
+		if note.Deleted && note.DeletedAt != nil && note.DeletedAt.Before(cutoff) {
+			os.Remove(filepath.Join(notesDir, note.ID+".json"))
+		}
+	}
 }
 
 func getNote(id string) (Note, error) {
@@ -255,7 +352,7 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if notes == nil {
-			notes = []Note{}
+			notes = []NoteIndex{}
 		}
 		json.NewEncoder(w).Encode(notes)
 	case http.MethodPost:
@@ -283,8 +380,13 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleNote(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/notes/")
+	if strings.HasSuffix(path, "/restore") {
+		restoreNote(w, r, strings.TrimSuffix(path, "/restore"))
+		return
+	}
 	jsonHeader(w)
-	id := strings.TrimPrefix(r.URL.Path, "/api/notes/")
+	id := path
 	if !isValidNoteID(id) {
 		http.Error(w, "invalid note ID", http.StatusBadRequest)
 		return
@@ -331,12 +433,20 @@ func handleNote(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode(note)
 	case http.MethodDelete:
-		if err := deleteNote(id); err != nil {
+		note, err := getNote(id)
+		if err != nil {
 			if os.IsNotExist(err) {
 				http.Error(w, "Note not found", http.StatusNotFound)
 			} else {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+			return
+		}
+		now := time.Now()
+		note.Deleted = true
+		note.DeletedAt = &now
+		if err := saveNote(note); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -403,6 +513,94 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"url": "/uploads/" + filename})
 }
 
+func restoreNote(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isValidNoteID(id) {
+		http.Error(w, "invalid note ID", http.StatusBadRequest)
+		return
+	}
+	note, err := getNote(id)
+	if err != nil {
+		http.Error(w, "note not found", http.StatusNotFound)
+		return
+	}
+	note.Deleted = false
+	note.DeletedAt = nil
+	if err := saveNote(note); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonHeader(w)
+	json.NewEncoder(w).Encode(note)
+}
+
+func handleTrash(w http.ResponseWriter, r *http.Request) {
+	jsonHeader(w)
+	switch r.Method {
+	case http.MethodGet:
+		items, err := listTrash()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if items == nil {
+			items = []NoteIndex{}
+		}
+		json.NewEncoder(w).Encode(items)
+	case http.MethodDelete:
+		// Empty trash
+		entries, err := os.ReadDir(notesDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			data, readErr := os.ReadFile(filepath.Join(notesDir, entry.Name()))
+			if readErr != nil {
+				continue
+			}
+			var note Note
+			if json.Unmarshal(data, &note) != nil {
+				continue
+			}
+			if note.Deleted {
+				os.Remove(filepath.Join(notesDir, note.ID+".json"))
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleTrashNote(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/trash/")
+	if !isValidNoteID(id) {
+		http.Error(w, "invalid note ID", http.StatusBadRequest)
+		return
+	}
+	note, err := getNote(id)
+	if err != nil || !note.Deleted {
+		http.Error(w, "note not found in trash", http.StatusNotFound)
+		return
+	}
+	if err := deleteNote(id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func handleRender(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -432,6 +630,8 @@ func main() {
 		log.Println("WARNING: AUTH_PASS not set — running without authentication")
 	}
 
+	purgeTrashed()
+
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
@@ -444,6 +644,7 @@ func main() {
 				}
 			}
 			sessionsMu.Unlock()
+			purgeTrashed()
 		}
 	}()
 
@@ -460,6 +661,8 @@ func main() {
 	mux.HandleFunc("/api/version", handleVersion)
 	mux.HandleFunc("/api/notes", handleNotes)
 	mux.HandleFunc("/api/notes/", handleNote)
+	mux.HandleFunc("/api/trash", handleTrash)
+	mux.HandleFunc("/api/trash/", handleTrashNote)
 	mux.HandleFunc("/api/render", handleRender)
 	mux.HandleFunc("/api/upload", handleUpload)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(noListFileSystem{http.Dir(uploadsDir)})))

@@ -25,9 +25,32 @@ const api = {
     if (!r.ok) throw new Error('Failed to save note');
     return r.json();
   },
+  async getNote(id) {
+    const r = await fetch(`/api/notes/${id}`);
+    if (!r.ok) throw new Error('Failed to load note');
+    return r.json();
+  },
   async deleteNote(id) {
     const r = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Failed to delete note');
+  },
+  async restoreNote(id) {
+    const r = await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
+    if (!r.ok) throw new Error('Failed to restore note');
+    return r.json();
+  },
+  async getTrash() {
+    const r = await fetch('/api/trash');
+    if (!r.ok) throw new Error('Failed to load trash');
+    return r.json();
+  },
+  async deleteTrashNote(id) {
+    const r = await fetch(`/api/trash/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Failed to permanently delete note');
+  },
+  async emptyTrash() {
+    const r = await fetch('/api/trash', { method: 'DELETE' });
+    if (!r.ok) throw new Error('Failed to empty trash');
   },
   async render(content) {
     const r = await fetch('/api/render', {
@@ -56,6 +79,8 @@ let _tplPickerOpen = false;
 let focusMode  = false;
 let _emojiOpen   = false;
 let _emojiAnchor = null;
+let _undoNote    = null;
+let _undoTimer   = null;
 
 const CALLOUT_TYPES = {
   NOTE:      { icon: 'ℹ',  label: 'Note' },
@@ -577,7 +602,11 @@ function renderList(filter = '') {
       return d.getFullYear() === calendarFilter.year && d.getMonth() === calendarFilter.month && d.getDate() === calendarFilter.day;
     });
   }
-  if (q) visible = visible.filter(n => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || (n.tags||[]).some(t=>t.includes(q)));
+  if (q) visible = visible.filter(n =>
+    n.title.toLowerCase().includes(q) ||
+    (n.content?.toLowerCase().includes(q)) ||
+    (n.snippet?.toLowerCase().includes(q)) ||
+    (n.tags||[]).some(t => t.includes(q)));
 
   visible = _sortNotes(visible);
 
@@ -611,7 +640,7 @@ function renderList(filter = '') {
         ${badges ? `<div class="note-item-badges">${badges}</div>` : ''}
       </div>
       ${hasTags ? `<div class="note-item-tags">${tags}</div>` : ''}
-      <div class="note-item-snippet">${escapeHtml(makeSnippet(n.content))}</div>
+      <div class="note-item-snippet">${escapeHtml(n.snippet || makeSnippet(n.content || '', 90))}</div>
       <div class="note-item-date">${timeAgo(n.modified)}</div>
     </div>`;
   }).join('');
@@ -731,7 +760,7 @@ let _selectSeq = 0; // incremented on every selectNote call; stale calls self-ab
 let _viewSeq   = 0; // incremented on every showViewMode call; aborts stale renders
 
 async function selectNote(id) {
-  const note = notes.find(n => n.id === id);
+  let note = notes.find(n => n.id === id);
   if (!note) return;
 
   const seq = ++_selectSeq; // claim this as the latest in-flight selection
@@ -743,6 +772,21 @@ async function selectNote(id) {
 
   // Another selectNote started while we were saving — bail out
   if (seq !== _selectSeq) return;
+
+  // Fetch full note content if not yet loaded (incremental loading)
+  if (note.content === undefined) {
+    try {
+      const full = await api.getNote(id);
+      if (seq !== _selectSeq) return;
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        notes[idx] = { ...notes[idx], content: full.content };
+        note = notes[idx];
+      }
+    } catch (e) {
+      console.error('Failed to load note content:', e);
+    }
+  }
 
   currentId = id;
   currentTags = [...(note.tags || [])];
@@ -788,7 +832,7 @@ async function doSave() {
       tags:    currentTags,
     });
     const idx = notes.findIndex(n => n.id === id);
-    if (idx !== -1) notes[idx] = updated;
+    if (idx !== -1) notes[idx] = { ...updated, snippet: makeSnippet(updated.content, 90) };
     setSaveStatus('saved', 'Saved');
     renderList(searchInput.value);
     updateTagFilters();
@@ -858,7 +902,7 @@ function renderWelcomeScreen() {
         <div class="recent-card" data-id="${n.id}">
           <div class="recent-card-title">${escapeHtml(n.title || 'Untitled')}</div>
           ${tagHtml}
-          <div class="recent-card-snippet">${escapeHtml(makeSnippet(n.content, 90))}</div>
+          <div class="recent-card-snippet">${escapeHtml(n.snippet || makeSnippet(n.content || '', 90))}</div>
           <div class="recent-card-date">${timeAgo(n.modified)}</div>
         </div>`;
       }).join('')}
@@ -899,20 +943,129 @@ function showWelcomeScreen() {
   if (isMobile()) openSidebar();
 }
 
-// ── Delete note ───────────────────────────────────────────────────────────────
+// ── Delete note (soft-delete + undo toast) ────────────────────────────────────
 async function deleteCurrentNote() {
   if (!currentId) return;
   const note = notes.find(n => n.id === currentId);
-  if (!confirm(`Delete "${note?.title || 'this note'}"?`)) return;
+  if (!note) return;
+  const noteId = currentId;
+  const saved  = { ...note };
   try {
-    await api.deleteNote(currentId);
-    notes = notes.filter(n => n.id !== currentId);
+    await api.deleteNote(noteId);
+    notes = notes.filter(n => n.id !== noteId);
     renderList(searchInput.value);
     updateTagFilters();
     renderCalendar();
     showWelcomeScreen();
+    showUndoToast(saved);
   } catch (e) {
     alert('Failed to delete note: ' + e.message);
+  }
+}
+
+function showUndoToast(note) {
+  clearTimeout(_undoTimer);
+  _undoNote = note;
+  const toast = $('undoToast');
+  $('undoToastMsg').textContent = `"${note.title || 'Untitled'}" moved to trash`;
+  toast.classList.remove('hidden');
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  _undoTimer = setTimeout(hideUndoToast, 5000);
+}
+
+function hideUndoToast() {
+  clearTimeout(_undoTimer);
+  _undoTimer = null;
+  const toast = $('undoToast');
+  toast.classList.remove('toast-visible');
+  setTimeout(() => { toast.classList.add('hidden'); _undoNote = null; }, 250);
+}
+
+async function undoDelete() {
+  if (!_undoNote) return;
+  const note = _undoNote;
+  hideUndoToast();
+  try {
+    await api.restoreNote(note.id);
+    // Add back to notes array without full content (selectNote will fetch it)
+    notes.unshift({ ...note, content: undefined });
+    renderList(searchInput.value);
+    updateTagFilters();
+    renderCalendar();
+    await selectNote(note.id);
+  } catch (e) {
+    alert('Could not undo: ' + e.message);
+  }
+}
+
+// ── Trash modal ───────────────────────────────────────────────────────────────
+async function openTrashModal() {
+  $('trashModal').classList.remove('hidden');
+  await renderTrashList();
+}
+
+function closeTrashModal() {
+  $('trashModal').classList.add('hidden');
+}
+
+async function renderTrashList() {
+  const container = $('trashList');
+  container.innerHTML = '<div class="trash-empty" style="opacity:.5">Loading…</div>';
+  try {
+    const items = await api.getTrash();
+    if (items.length === 0) {
+      container.innerHTML = '<div class="trash-empty">Trash is empty.</div>';
+      return;
+    }
+    container.innerHTML = items.map(n => `
+      <div class="trash-item">
+        <div class="trash-item-info">
+          <div class="trash-item-title">${escapeHtml(n.title || 'Untitled')}</div>
+          ${n.snippet ? `<div class="trash-item-snippet">${escapeHtml(n.snippet)}</div>` : ''}
+          <div class="trash-item-date">Deleted ${timeAgo(n.modified)}</div>
+        </div>
+        <div class="trash-item-actions">
+          <button class="btn-restore" data-id="${n.id}">Restore</button>
+          <button class="btn-delete-forever" data-id="${n.id}">Delete forever</button>
+        </div>
+      </div>`).join('');
+    container.querySelectorAll('.btn-restore').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        try {
+          await api.restoreNote(btn.dataset.id);
+          // Re-fetch note list and refresh trash
+          notes = await api.getNotes();
+          renderList(searchInput.value);
+          updateTagFilters();
+          renderCalendar();
+          await renderTrashList();
+        } catch (e) { alert('Restore failed: ' + e.message); }
+      }));
+    container.querySelectorAll('.btn-delete-forever').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        if (!confirm('Permanently delete this note? This cannot be undone.')) return;
+        try {
+          await api.deleteTrashNote(btn.dataset.id);
+          await renderTrashList();
+        } catch (e) { alert('Delete failed: ' + e.message); }
+      }));
+  } catch (e) {
+    container.innerHTML = '<div class="trash-empty">Could not load trash.</div>';
+  }
+}
+
+// ── Background content loader ─────────────────────────────────────────────────
+async function backgroundLoadNotes() {
+  for (const n of [...notes]) {
+    if (n.content !== undefined) continue;
+    const idx = notes.findIndex(x => x.id === n.id);
+    if (idx === -1) continue;
+    try {
+      const full = await api.getNote(n.id);
+      if (notes[idx] && notes[idx].content === undefined) {
+        notes[idx] = { ...notes[idx], content: full.content };
+      }
+    } catch {}
   }
 }
 
@@ -1170,7 +1323,8 @@ function _renderSearchResults(q) {
     const lq = trimmed.toLowerCase();
     hits = notes.filter(n =>
       n.title.toLowerCase().includes(lq) ||
-      n.content.toLowerCase().includes(lq) ||
+      (n.content?.toLowerCase().includes(lq)) ||
+      (n.snippet?.toLowerCase().includes(lq)) ||
       (n.tags || []).some(t => t.toLowerCase().includes(lq))
     );
     hits.sort((a, b) => {
@@ -1197,7 +1351,7 @@ function _renderSearchResults(q) {
       <div class="search-result-title">${_highlight(n.title, trimmed)}</div>
       <div class="search-result-meta">
         ${tags}
-        <span class="search-result-snippet">${_snippetAround(n.content.replace(/[#*`>\-_\[\]]/g, ''), trimmed)}</span>
+        <span class="search-result-snippet">${_snippetAround((n.content || n.snippet || '').replace(/[#*`>\-_\[\]]/g, ''), trimmed)}</span>
       </div>
     </div>`;
   }).join('');
@@ -1457,6 +1611,21 @@ async function init() {
   // Delete
   $('deleteBtn').addEventListener('click', deleteCurrentNote);
 
+  // Undo toast
+  $('undoBtn').addEventListener('click', undoDelete);
+
+  // Trash modal
+  $('trashBtn').addEventListener('click', openTrashModal);
+  $('closeTrashModal').addEventListener('click', closeTrashModal);
+  $('trashModal').addEventListener('click', e => { if (e.target === $('trashModal')) closeTrashModal(); });
+  $('emptyTrashBtn').addEventListener('click', async () => {
+    if (!confirm('Permanently delete all notes in trash? This cannot be undone.')) return;
+    try {
+      await api.emptyTrash();
+      await renderTrashList();
+    } catch (e) { alert('Failed to empty trash: ' + e.message); }
+  });
+
   // Pin / lock / template toggles
   $('pinBtn').addEventListener('click', togglePin);
   $('lockBtn').addEventListener('click', toggleLock);
@@ -1538,6 +1707,7 @@ async function init() {
     if (e.key === 'Escape') {
       if (_searchOpen) { closeSearch(); return; }
       if (_gOpen) { closeGraph(); return; }
+      if (!$('trashModal').classList.contains('hidden')) { closeTrashModal(); return; }
       if (!$('tipsModal').classList.contains('hidden')) { closeTips(); return; }
       if (_tplPickerOpen) { closeTemplatePicker(); return; }
       if (_emojiOpen) { closeEmojiPicker(); return; }
@@ -1597,6 +1767,8 @@ async function init() {
       if (isMobile()) openSidebar();
       startParticles();
     }
+    // Fetch full content in the background so search and backlinks work on all notes
+    backgroundLoadNotes();
   } catch {
     notesList.innerHTML = '<div class="notes-empty">Could not load notes.</div>';
   }
@@ -1636,7 +1808,7 @@ function buildBacklinks(noteId, noteTitle) {
   const targetLower = noteTitle.trim().toLowerCase();
   const wikiRe = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
   const sources = notes.filter(n => {
-    if (n.id === noteId || !n.content) return false;
+    if (n.id === noteId || n.content === undefined || !n.content) return false;
     return [...n.content.matchAll(wikiRe)].some(m => m[1].trim().toLowerCase() === targetLower);
   });
   if (sources.length === 0) return null;
@@ -1654,7 +1826,7 @@ function buildBacklinks(noteId, noteTitle) {
     <div class="backlinks-list">
       ${sources.map(n => `<div class="backlink-item" data-id="${n.id}">
         <div class="backlink-title">${escapeHtml(n.title)}</div>
-        <div class="backlink-snippet">${escapeHtml(makeSnippet(n.content, 90))}</div>
+        <div class="backlink-snippet">${escapeHtml(n.snippet || makeSnippet(n.content || '', 90))}</div>
       </div>`).join('')}
     </div>`;
   section.querySelectorAll('.backlink-item').forEach(el =>
