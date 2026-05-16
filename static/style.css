@@ -206,6 +206,26 @@ body {
 .search-input::placeholder { color: var(--sb-muted); }
 .search-input:focus { border-color: rgba(167,139,250,.4); }
 
+/* Sort row */
+.sidebar-sort-row {
+  display: flex; align-items: center;
+  padding: 5px 12px 4px;
+  gap: 2px;
+  border-bottom: 1px solid var(--sb-border);
+  flex-shrink: 0;
+}
+.sort-btn {
+  flex: 1;
+  background: none; border: none;
+  font-family: inherit; font-size: 11px; font-weight: 500;
+  color: var(--sb-muted); padding: 4px 0;
+  cursor: pointer; border-radius: var(--radius-sm);
+  text-align: center;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.sort-btn:hover { color: var(--sb-text); background: var(--sb-hover); }
+.sort-btn.active { color: #a78bfa; font-weight: 600; }
+
 /* Tag filters */
 .tag-filters {
   padding: 6px 12px 8px;
@@ -303,6 +323,16 @@ body {
   line-height: 1.4; margin-bottom: 3px;
 }
 .note-item-date { font-size: 10.5px; color: var(--sb-muted); opacity: .6; }
+.note-item-title-row { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
+.note-item-title-row .note-item-title { margin-bottom: 0; flex: 1; min-width: 0; }
+.note-item-badges { display: flex; gap: 3px; align-items: center; flex-shrink: 0; }
+.note-badge {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block;
+}
+.note-badge-pin  { background: #f97316; }
+.note-badge-lock { background: #ef4444; }
+.note-badge-tpl  { background: #0d9488; }
+.note-item.is-pinned { border-left-color: rgba(249,115,22,.5); }
 
 /* ═══════════════════════════════════════════════
    Main content
@@ -507,6 +537,11 @@ body {
 }
 .btn-topbar:hover { background: var(--surface); color: var(--text); border-color: var(--border); }
 .btn-topbar:active { opacity: .8; }
+
+.btn-topbar.is-active {
+  background: var(--accent-dim); color: var(--accent); border-color: transparent;
+}
+.btn-topbar.is-active:hover { background: var(--accent); color: #fff; }
 
 .btn-topbar.btn-topbar-accent {
   background: var(--accent-dim); color: var(--accent); border-color: transparent;

@@ -127,12 +127,15 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
 type Note struct {
-	ID       string    `json:"id"`
-	Title    string    `json:"title"`
-	Content  string    `json:"content"`
-	Tags     []string  `json:"tags"`
-	Created  time.Time `json:"created"`
-	Modified time.Time `json:"modified"`
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	Content    string    `json:"content"`
+	Tags       []string  `json:"tags"`
+	Created    time.Time `json:"created"`
+	Modified   time.Time `json:"modified"`
+	Pinned     bool      `json:"pinned,omitempty"`
+	Locked     bool      `json:"locked,omitempty"`
+	IsTemplate bool      `json:"isTemplate,omitempty"`
 }
 
 func renderMarkdown(md string) string {
@@ -293,6 +296,9 @@ func handleNote(w http.ResponseWriter, r *http.Request) {
 		note.Content = update.Content
 		note.Tags = update.Tags
 		note.Modified = time.Now()
+		note.Pinned = update.Pinned
+		note.Locked = update.Locked
+		note.IsTemplate = update.IsTemplate
 		if err := saveNote(note); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

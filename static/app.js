@@ -51,6 +51,23 @@ let ignoreChange = false;
 let isEditing  = false;
 let activeTagFilter = null;
 let sidebarOpen = false;
+let sortOrder  = localStorage.getItem('sortOrder') || 'modified';
+let _tplPickerOpen = false;
+
+const BUILT_IN_TEMPLATES = [
+  {
+    id: '__daily', title: 'Daily Note',
+    content: '# {date}\n\n## Focus\n\n- \n\n## Notes\n\n\n\n## Done\n\n- ',
+  },
+  {
+    id: '__meeting', title: 'Meeting Notes',
+    content: '# Meeting Notes\n\n**Date:** {date}  \n**Attendees:** \n\n## Agenda\n\n1. \n\n## Notes\n\n\n\n## Action items\n\n- [ ] ',
+  },
+  {
+    id: '__project', title: 'Project Note',
+    content: '# Project Title\n\n## Overview\n\n\n\n## Goals\n\n- \n\n## Tasks\n\n- [ ] \n\n## Notes\n\n',
+  },
+];
 
 // Calendar state
 let calendarYear   = new Date().getFullYear();
@@ -392,6 +409,23 @@ function setSaveStatus(state, text) {
 }
 
 // ── Notes list ────────────────────────────────────────────────────────────────
+function _sortNotes(arr) {
+  const cmp = {
+    'modified':   (a, b) => new Date(b.modified) - new Date(a.modified),
+    'created':    (a, b) => new Date(b.created)  - new Date(a.created),
+    'title-asc':  (a, b) => a.title.localeCompare(b.title),
+    'title-desc': (a, b) => b.title.localeCompare(a.title),
+  }[sortOrder] || ((a, b) => new Date(b.modified) - new Date(a.modified));
+  const pinned = arr.filter(n => n.pinned).sort(cmp);
+  const rest   = arr.filter(n => !n.pinned).sort(cmp);
+  return [...pinned, ...rest];
+}
+
+function updateSortUI() {
+  document.querySelectorAll('.sort-btn').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.sort === sortOrder));
+}
+
 function renderList(filter = '') {
   const q = filter.toLowerCase().trim();
   let visible = notes;
@@ -404,6 +438,8 @@ function renderList(filter = '') {
     });
   }
   if (q) visible = visible.filter(n => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || (n.tags||[]).some(t=>t.includes(q)));
+
+  visible = _sortNotes(visible);
 
   if (visible.length === 0) {
     let emptyMsg;
@@ -423,8 +459,17 @@ function renderList(filter = '') {
   notesList.innerHTML = visible.map(n => {
     const tags = (n.tags || []).slice(0, 3).map(renderTagBadge).join('');
     const hasTags = n.tags && n.tags.length > 0;
-    return `<div class="note-item${n.id === currentId ? ' active' : ''}" data-id="${n.id}">
-      <div class="note-item-title">${escapeHtml(n.title)}</div>
+    const badges = [
+      n.pinned     ? '<span class="note-badge note-badge-pin"  title="Pinned"></span>'    : '',
+      n.locked     ? '<span class="note-badge note-badge-lock" title="Locked"></span>'    : '',
+      n.isTemplate ? '<span class="note-badge note-badge-tpl"  title="Template"></span>'  : '',
+    ].join('');
+    const cls = ['note-item', n.id === currentId ? 'active' : '', n.pinned ? 'is-pinned' : ''].filter(Boolean).join(' ');
+    return `<div class="${cls}" data-id="${n.id}">
+      <div class="note-item-title-row">
+        <div class="note-item-title">${escapeHtml(n.title)}</div>
+        ${badges ? `<div class="note-item-badges">${badges}</div>` : ''}
+      </div>
       ${hasTags ? `<div class="note-item-tags">${tags}</div>` : ''}
       <div class="note-item-snippet">${escapeHtml(makeSnippet(n.content))}</div>
       <div class="note-item-date">${timeAgo(n.modified)}</div>
@@ -446,10 +491,17 @@ async function showViewMode() {
   isEditing = false;
   titleInput.readOnly = true;
   tagInput.style.display = 'none';
-  editBtn.classList.remove('hidden');
   doneBtn.classList.add('hidden');
 
+  const _lockedNote = notes.find(n => n.id === id);
+  if (_lockedNote?.locked) {
+    editBtn.classList.add('hidden');
+  } else {
+    editBtn.classList.remove('hidden');
+  }
+
   renderTagBar(false);
+  updateNoteStateButtons();
 
   const note = notes.find(n => n.id === id);
 
@@ -506,6 +558,8 @@ async function showViewMode() {
 }
 
 function showEditMode() {
+  const _editNote = notes.find(n => n.id === currentId);
+  if (_editNote?.locked) return;
   ++_viewSeq; // abort any in-flight showViewMode for this note
   isEditing = true;
   titleInput.readOnly = false;
@@ -551,6 +605,7 @@ async function selectNote(id) {
 
   currentId = id;
   currentTags = [...(note.tags || [])];
+  updateNoteStateButtons();
 
   // Only update the title input here; editor content is loaded lazily in
   // showEditMode() so we never call easyMDE.value() on a hidden container
@@ -572,6 +627,8 @@ async function selectNote(id) {
 // ── Auto-save ─────────────────────────────────────────────────────────────────
 function scheduleSave() {
   if (ignoreChange || !currentId) return;
+  const note = notes.find(n => n.id === currentId);
+  if (note?.locked) return;
   setSaveStatus('saving', 'Unsaved…');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(doSave, 1500);
@@ -580,8 +637,11 @@ function scheduleSave() {
 async function doSave() {
   if (!currentId) return;
   const id = currentId; // capture before async ops — currentId may change while awaiting
+  const existing = notes.find(n => n.id === id);
+  if (existing?.locked) return;
   try {
     const updated = await api.updateNote(id, {
+      ...(existing || {}),
       title:   titleInput.value.trim() || 'Untitled Note',
       content: easyMDE.value(),
       tags:    currentTags,
@@ -642,6 +702,155 @@ async function deleteCurrentNote() {
   } catch (e) {
     alert('Failed to delete note: ' + e.message);
   }
+}
+
+// ── Note state buttons (pin / lock / template) ────────────────────────────────
+
+function updateNoteStateButtons() {
+  const note = currentId ? notes.find(n => n.id === currentId) : null;
+  $('pinBtn').classList.toggle('is-active', !!note?.pinned);
+  $('lockBtn').classList.toggle('is-active', !!note?.locked);
+  $('noteTemplateBtn').classList.toggle('is-active', !!note?.isTemplate);
+}
+
+function _notePayload(note) {
+  const isCurrent = note.id === currentId;
+  return {
+    ...note,
+    title:   isCurrent ? (titleInput.value.trim() || note.title) : note.title,
+    content: (isCurrent && isEditing) ? easyMDE.value() : note.content,
+    tags:    isCurrent ? currentTags : (note.tags || []),
+  };
+}
+
+async function togglePin() {
+  if (!currentId) return;
+  const note = notes.find(n => n.id === currentId);
+  if (!note) return;
+  try {
+    const updated = await api.updateNote(currentId, { ..._notePayload(note), pinned: !note.pinned });
+    const idx = notes.findIndex(n => n.id === currentId);
+    if (idx !== -1) notes[idx] = updated;
+    updateNoteStateButtons();
+    renderList(searchInput.value);
+  } catch(e) { console.error('Toggle pin:', e); }
+}
+
+async function toggleLock() {
+  if (!currentId) return;
+  const note = notes.find(n => n.id === currentId);
+  if (!note) return;
+  if (isEditing && !note.locked) {
+    clearTimeout(saveTimer);
+    await doSave();
+    await showViewMode();
+  }
+  try {
+    const fresh = notes.find(n => n.id === currentId);
+    const updated = await api.updateNote(currentId, { ..._notePayload(fresh), locked: !fresh.locked });
+    const idx = notes.findIndex(n => n.id === currentId);
+    if (idx !== -1) notes[idx] = updated;
+    if (updated.locked) {
+      editBtn.classList.add('hidden');
+    } else {
+      if (!isEditing) editBtn.classList.remove('hidden');
+    }
+    updateNoteStateButtons();
+    renderList(searchInput.value);
+  } catch(e) { console.error('Toggle lock:', e); }
+}
+
+async function toggleTemplate() {
+  if (!currentId) return;
+  const note = notes.find(n => n.id === currentId);
+  if (!note) return;
+  try {
+    const updated = await api.updateNote(currentId, { ..._notePayload(note), isTemplate: !note.isTemplate });
+    const idx = notes.findIndex(n => n.id === currentId);
+    if (idx !== -1) notes[idx] = updated;
+    updateNoteStateButtons();
+    renderList(searchInput.value);
+  } catch(e) { console.error('Toggle template:', e); }
+}
+
+// ── Template picker ───────────────────────────────────────────────────────────
+
+function openTemplatePicker() {
+  _tplPickerOpen = true;
+  $('templatePicker').classList.remove('hidden');
+  _renderTplResults();
+}
+
+function closeTemplatePicker() {
+  _tplPickerOpen = false;
+  $('templatePicker').classList.add('hidden');
+}
+
+function _renderTplResults() {
+  const userTemplates = notes.filter(n => n.isTemplate);
+  const results = $('tplResults');
+  const all = [
+    ...BUILT_IN_TEMPLATES.map(t => ({ ...t, _builtin: true })),
+    ...userTemplates.map(t => ({ ...t, _builtin: false })),
+  ];
+
+  if (all.length === 0) {
+    results.innerHTML = `<div class="nlp-empty">No templates yet. Mark any note as a template using the Template button in the topbar.</div>`;
+    return;
+  }
+
+  results.innerHTML = all.map(t => `
+    <div class="nlp-item" data-id="${escapeHtml(t.id)}" data-builtin="${t._builtin ? '1' : '0'}">
+      <div class="nlp-item-title">${escapeHtml(t.title)}</div>
+      ${t._builtin ? '<div style="font-size:10.5px;color:var(--text-faint);margin-top:1px">Built-in</div>' : ''}
+    </div>`).join('');
+
+  results.querySelectorAll('.nlp-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (el.dataset.builtin === '1') {
+        _createFromBuiltinTemplate(BUILT_IN_TEMPLATES.find(t => t.id === id));
+      } else {
+        _createFromUserTemplate(id);
+      }
+      closeTemplatePicker();
+    });
+  });
+}
+
+function _fillTemplateVars(content) {
+  const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return content.replace(/\{date\}/g, date);
+}
+
+async function _createFromBuiltinTemplate(tpl) {
+  if (!tpl) return;
+  const title = tpl.id === '__daily'
+    ? new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    : tpl.title;
+  try {
+    const note = await api.createNote({ title, content: _fillTemplateVars(tpl.content), tags: [] });
+    notes.unshift(note);
+    renderList(searchInput.value);
+    renderCalendar();
+    await selectNote(note.id);
+    showEditMode();
+    setTimeout(() => titleInput.select(), 50);
+  } catch(e) { alert('Failed to create note: ' + e.message); }
+}
+
+async function _createFromUserTemplate(templateId) {
+  const tpl = notes.find(n => n.id === templateId);
+  if (!tpl) return;
+  try {
+    const note = await api.createNote({ title: tpl.title + ' (copy)', content: tpl.content, tags: [...(tpl.tags || [])] });
+    notes.unshift(note);
+    renderList(searchInput.value);
+    renderCalendar();
+    await selectNote(note.id);
+    showEditMode();
+    setTimeout(() => titleInput.select(), 50);
+  } catch(e) { alert('Failed to create note: ' + e.message); }
 }
 
 // ── Note-link picker ──────────────────────────────────────────────────────────
@@ -1008,8 +1217,11 @@ async function init() {
   editBtn.addEventListener('click', showEditMode);
   doneBtn.addEventListener('click', async () => { clearTimeout(saveTimer); await doSave(); await showViewMode(); });
 
-  // Double-click rendered view → edit
-  noteView.addEventListener('dblclick', showEditMode);
+  // Double-click rendered view → edit (blocked if locked)
+  noteView.addEventListener('dblclick', () => {
+    const n = notes.find(n => n.id === currentId);
+    if (!n?.locked) showEditMode();
+  });
 
   // Tips
   $('tipsBtn').addEventListener('click', openTips);
@@ -1032,6 +1244,27 @@ async function init() {
 
   // Delete
   $('deleteBtn').addEventListener('click', deleteCurrentNote);
+
+  // Pin / lock / template toggles
+  $('pinBtn').addEventListener('click', togglePin);
+  $('lockBtn').addEventListener('click', toggleLock);
+  $('noteTemplateBtn').addEventListener('click', toggleTemplate);
+
+  // Sort row
+  updateSortUI();
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sortOrder = btn.dataset.sort;
+      localStorage.setItem('sortOrder', sortOrder);
+      updateSortUI();
+      renderList(searchInput.value);
+    });
+  });
+
+  // Template picker
+  $('fromTemplateBtn').addEventListener('click', openTemplatePicker);
+  $('templatePickerClose').addEventListener('click', closeTemplatePicker);
+  $('templatePicker').addEventListener('click', e => { if (e.target === $('templatePicker')) closeTemplatePicker(); });
 
   // Search
   searchInput.addEventListener('input', () => renderList(searchInput.value));
@@ -1061,6 +1294,7 @@ async function init() {
       if (_searchOpen) { closeSearch(); return; }
       if (_gOpen) { closeGraph(); return; }
       if (!$('tipsModal').classList.contains('hidden')) { closeTips(); return; }
+      if (_tplPickerOpen) { closeTemplatePicker(); return; }
       if (noteLinkPickerOpen) { closeNoteLinkPicker(); return; }
       if (isEditing) { clearTimeout(saveTimer); doSave().then(showViewMode); }
     }

@@ -61,6 +61,18 @@
             <line x1="7" y1="19" x2="17" y2="19"/>
           </svg>
         </button>
+        <button id="fromTemplateBtn" class="btn-graph-icon" title="New from template">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sidebar-sort-row" id="sidebarSortRow">
+        <button class="sort-btn active" data-sort="modified">Recent</button>
+        <button class="sort-btn" data-sort="created">Created</button>
+        <button class="sort-btn" data-sort="title-asc">A–Z</button>
+        <button class="sort-btn" data-sort="title-desc">Z–A</button>
       </div>
 
       <div class="sidebar-search">
@@ -168,6 +180,19 @@
               <span class="btn-label">Done</span>
             </button>
             <div class="topbar-sep"></div>
+            <button id="pinBtn" class="btn-topbar" title="Pin note">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+              <span class="btn-label">Pin</span>
+            </button>
+            <button id="lockBtn" class="btn-topbar" title="Lock / unlock note">
+              <svg id="lockIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="btn-label">Lock</span>
+            </button>
+            <button id="noteTemplateBtn" class="btn-topbar" title="Mark as template">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+              <span class="btn-label">Template</span>
+            </button>
+            <div class="topbar-sep"></div>
             <button id="tipsBtn" class="btn-topbar">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               <span class="btn-label">Guide</span>
@@ -209,6 +234,16 @@
       </div>
 
     </main>
+  </div>
+
+  <!-- Template picker -->
+  <div id="templatePicker" class="note-link-picker hidden">
+    <div class="nlp-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+      <span class="nlp-search" style="cursor:default;color:var(--text-muted);font-size:13px;font-weight:600">New from template</span>
+      <button id="templatePickerClose" class="nlp-close">&times;</button>
+    </div>
+    <div id="tplResults" class="nlp-results"></div>
   </div>
 
   <!-- Note-link picker -->
