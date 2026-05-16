@@ -5,7 +5,7 @@ A Go-based markdown note-taking web app. Single binary, no database — each not
 
 ## Build & run
 ```bash
-/home/murbanek/go/bin/go build -ldflags="-X main.version=v1.1.0" -o markdown-notes .
+/home/murbanek/go/bin/go build -ldflags="-X main.version=v1.2.0" -o markdown-notes .
 pkill -f markdown-notes 2>/dev/null; sleep 0.3
 AUTH_USER=admin AUTH_PASS=***** ./markdown-notes &
 ```
@@ -20,7 +20,7 @@ Update the version string in `main.go` and the build command above when bumping.
 
 ## Docker
 ```bash
-sudo docker build --build-arg VERSION=v1.1.0 -t urban-notes:v1.1.0 -t urban-notes:latest .
+sudo docker build --build-arg VERSION=v1.2.0 -t urban-notes:v1.2.0 -t urban-notes:latest .
 sudo docker save urban-notes:latest | gzip > urban-notes.tar.gz
 ```
 
