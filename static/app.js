@@ -287,7 +287,7 @@ function noteDateKey(dateStr) {
 function noteDatesSet() {
   const set = new Set();
   for (const n of notes) {
-    if (n.modified) set.add(noteDateKey(n.modified));
+    if (n.created) set.add(noteDateKey(n.created));
   }
   return set;
 }
@@ -432,8 +432,8 @@ function renderList(filter = '') {
   if (activeTagFilter) visible = visible.filter(n => (n.tags || []).includes(activeTagFilter));
   if (calendarFilter) {
     visible = visible.filter(n => {
-      if (!n.modified) return false;
-      const d = new Date(n.modified);
+      if (!n.created) return false;
+      const d = new Date(n.created);
       return d.getFullYear() === calendarFilter.year && d.getMonth() === calendarFilter.month && d.getDate() === calendarFilter.day;
     });
   }
