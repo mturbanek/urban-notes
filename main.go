@@ -28,7 +28,7 @@ const (
 )
 
 // version is set at build time via -ldflags "-X main.version=vX.Y.Z"
-var version = "v1.2.0"
+var version = "v1.3.0"
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ func deleteNote(id string) error {
 }
 
 func isValidNoteID(id string) bool {
-	if id == "" {
+	if id == "" || len(id) > 64 {
 		return false
 	}
 	for _, c := range id {
@@ -205,6 +205,27 @@ func isValidNoteID(id string) bool {
 		}
 	}
 	return true
+}
+
+// ── noListFileSystem — serves files but returns 404 for directory requests ────
+
+type noListFileSystem struct{ root http.FileSystem }
+
+func (fs noListFileSystem) Open(name string) (http.File, error) {
+	f, err := fs.root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if stat.IsDir() {
+		f.Close()
+		return nil, os.ErrNotExist
+	}
+	return f, nil
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -292,6 +313,11 @@ func handleNote(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Note not found", http.StatusNotFound)
 			return
 		}
+		// Allow unlocking a locked note, but block all other mutations while locked.
+		if note.Locked && update.Locked {
+			http.Error(w, "note is locked", http.StatusForbidden)
+			return
+		}
 		note.Title = update.Title
 		note.Content = update.Content
 		note.Tags = update.Tags
@@ -347,7 +373,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Build a collision-safe filename: timestamp + original name
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true, ".svg": true}
+	// SVG intentionally excluded: it can embed JavaScript and execute in-browser.
+	allowedExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
 	if !allowedExts[ext] {
 		http.Error(w, "unsupported image type", http.StatusBadRequest)
 		return
@@ -406,10 +433,13 @@ func main() {
 	}
 
 	go func() {
-		for range time.Tick(1 * time.Hour) {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			now := time.Now()
 			sessionsMu.Lock()
 			for tok, exp := range sessions {
-				if time.Now().After(exp) {
+				if now.After(exp) {
 					delete(sessions, tok)
 				}
 			}
@@ -432,9 +462,16 @@ func main() {
 	mux.HandleFunc("/api/notes/", handleNote)
 	mux.HandleFunc("/api/render", handleRender)
 	mux.HandleFunc("/api/upload", handleUpload)
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir))))
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(noListFileSystem{http.Dir(uploadsDir)})))
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      securityHeaders(requireAuth(mux)),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 	fmt.Printf("Urban Notes %s running at http://localhost:%s\n", version, port)
-	log.Fatal(http.ListenAndServe(":"+port, securityHeaders(requireAuth(mux))))
+	log.Fatal(srv.ListenAndServe())
 }

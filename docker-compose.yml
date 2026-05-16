@@ -4,7 +4,7 @@ services:
     build:
       context: .
       args:
-        VERSION: v1.2.0
+        VERSION: v1.3.0
     container_name: urban-notes
     ports:
       - "8080:8080"
