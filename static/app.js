@@ -858,6 +858,7 @@ async function init() {
   // Note graph
   $('graphBtn').addEventListener('click', openGraph);
   $('graphClose').addEventListener('click', closeGraph);
+  _initGraphEvents($('graphCanvas'));
 
   // New / welcome
   $('newNoteBtn').addEventListener('click', createNote);
@@ -1319,8 +1320,6 @@ function _initGraphEvents(canvas) {
     if (nd) { _gDragNode=nd; _gDragStart={x:e.clientX,y:e.clientY}; canvas.style.cursor='grabbing'; }
     else _gPan={mx,my};
   });
-  // Navigation is handled by 'click' (fires only for genuine taps, not drags).
-  // This avoids the mousedown→mouseleave→mouseup race that swallowed click targets.
   canvas.addEventListener('click', e => {
     const r=canvas.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
     const nd=_gHitNode(canvas,mx,my);
