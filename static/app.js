@@ -701,7 +701,7 @@ function renderWelcomeScreen() {
   const sorted = _sortNotes(notes);
   const recent = sorted.slice(0, 3);
   const tagCount = allTags().length;
-  const lastMod  = sorted[0];
+  const lastMod  = notes.reduce((a, b) => new Date(b.modified) > new Date(a.modified) ? b : a);
   statsEl.textContent = `${notes.length} note${notes.length !== 1 ? 's' : ''} · ${tagCount} tag${tagCount !== 1 ? 's' : ''} · last edited ${timeAgo(lastMod.modified)}`;
   statsEl.classList.remove('hidden');
 
